@@ -1,6 +1,6 @@
 python infer.py \
     --lora_weight "models/age_slider.pt" \
-    --scales "-1,1,2,3,4" \
+    --scales "1,2,3,4" \
     --prompts "A selfie of a girl, upper body, smiling, beautiful" \
     --output_dir "output" \
     --pretrained_model "stablediffusionapi/realistic-vision-v51" \

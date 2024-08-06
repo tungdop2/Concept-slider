@@ -9,70 +9,75 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
 from trainscripts.textsliders.lora import LoRANetwork, DEFAULT_TARGET_REPLACE, UNET_TARGET_REPLACE_MODULE_CONV
 
-
 def flush():
     torch.cuda.empty_cache()
     gc.collect()
-    
 
 def prepare_base_model(pretrained_model_name_or_path, revision, device, weight_dtype):
-    noise_scheduler = DDIMScheduler(
-        beta_start=0.00085,
-        beta_end=0.012,
-        beta_schedule="scaled_linear",
-        num_train_timesteps=1000,
-        clip_sample=False,
-        prediction_type="epsilon"
-    )
-    tokenizer = CLIPTokenizer.from_pretrained(
-        pretrained_model_name_or_path, subfolder="tokenizer", revision=revision
-    )
-    text_encoder = CLIPTextModel.from_pretrained(
-        pretrained_model_name_or_path, subfolder="text_encoder", revision=revision
-    )
-    vae = AutoencoderKL.from_pretrained(
-        pretrained_model_name_or_path, subfolder="vae", revision=revision
-    )
-    unet = UNet2DConditionModel.from_pretrained(
-        pretrained_model_name_or_path, subfolder="unet", revision=revision
-    )
+    try:
+        noise_scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            num_train_timesteps=1000,
+            clip_sample=False,
+            prediction_type="epsilon"
+        )
+        tokenizer = CLIPTokenizer.from_pretrained(
+            pretrained_model_name_or_path, subfolder="tokenizer", revision=revision
+        )
+        text_encoder = CLIPTextModel.from_pretrained(
+            pretrained_model_name_or_path, subfolder="text_encoder", revision=revision
+        )
+        vae = AutoencoderKL.from_pretrained(
+            pretrained_model_name_or_path, subfolder="vae", revision=revision
+        )
+        unet = UNet2DConditionModel.from_pretrained(
+            pretrained_model_name_or_path, subfolder="unet", revision=revision
+        )
 
-    unet.requires_grad_(False)
-    unet.to(device, dtype=weight_dtype)
-    vae.requires_grad_(False)
-    vae.to(device, dtype=weight_dtype)
-    text_encoder.requires_grad_(False)
-    text_encoder.to(device, dtype=weight_dtype)
+        unet.requires_grad_(False)
+        unet.to(device, dtype=weight_dtype)
+        vae.requires_grad_(False)
+        vae.to(device, dtype=weight_dtype)
+        text_encoder.requires_grad_(False)
+        text_encoder.to(device, dtype=weight_dtype)
 
-    return noise_scheduler, tokenizer, text_encoder, vae, unet
+        return noise_scheduler, tokenizer, text_encoder, vae, unet
+    except Exception as e:
+        print(f"Error preparing base model: {e}")
+        raise
 
 def load_lora_for_unet(lora_weight, unet, device, weight_dtype):
-    lora_dict = torch.load(lora_weight, map_location="cpu")
-    
-    lora_params = lora_dict['lora_params']
-    print(f"LoRA parameters: {lora_params}")
+    try:
+        lora_dict = torch.load(lora_weight, map_location="cpu")
         
-    alpha = lora_params['alpha']
-    rank = lora_params['rank']
-    train_method = lora_params['train_method']
-    multiplier = lora_params['multiplier']
-    network_type = lora_params['network_type']
-    
-    modules = DEFAULT_TARGET_REPLACE
-    if network_type == "c3lier":
-        modules += UNET_TARGET_REPLACE_MODULE_CONV
+        lora_params = lora_dict['lora_params']
+        print(f"LoRA parameters: {lora_params}")
+            
+        alpha = lora_params['alpha']
+        rank = lora_params['rank']
+        train_method = lora_params['train_method']
+        multiplier = lora_params['multiplier']
+        network_type = lora_params['network_type']
+        
+        modules = DEFAULT_TARGET_REPLACE
+        if network_type == "c3lier":
+            modules += UNET_TARGET_REPLACE_MODULE_CONV
 
-    network = LoRANetwork(
-        unet,
-        rank=rank,
-        multiplier=multiplier,
-        alpha=alpha,
-        train_method=train_method,
-    ).to(device, dtype=weight_dtype)
-    network.load_state_dict(lora_dict['lora_state_dict'])
+        network = LoRANetwork(
+            unet,
+            rank=rank,
+            multiplier=multiplier,
+            alpha=alpha,
+            train_method=train_method,
+        ).to(device, dtype=weight_dtype)
+        network.load_state_dict(lora_dict['lora_state_dict'])
 
-    return network
-
+        return network
+    except Exception as e:
+        print(f"Error loading LoRA for UNet: {e}")
+        raise
 
 def generate_images(prompt, scales, lora_weight, output_dir, pretrained_model_name_or_path, revision, device, weight_dtype, start_noise, num_images_per_prompt, negative_prompt, batch_size, height, width, ddim_steps, guidance_scale):
     os.makedirs(output_dir, exist_ok=True)
@@ -149,11 +154,10 @@ def generate_images(prompt, scales, lora_weight, output_dir, pretrained_model_na
         del network
         torch.cuda.empty_cache()
 
-
 def main():
     parser = argparse.ArgumentParser(description="Generate images using a pre-trained model and LoRA weights.")
     parser.add_argument('--lora_weight', type=str, required=True, help="LORA weights for image generation.")
-    parser.add_argument('--scales', type=str, required=True, help="Comma-separated list of scales.")
+    parser.add_argument('--scales', type=str, required=True, help="Semicolon-separated list of scales.")  # Note the delimiter change
     parser.add_argument('--prompts', type=str, required=True, help="Comma-separated list of prompts.")
     parser.add_argument('--output_dir', type=str, default='output', help="Directory to save the generated images and GIFs.")
     parser.add_argument('--pretrained_model', type=str, default="stablediffusionapi/realistic-vision-v51", help="Pre-trained model path.")
@@ -172,9 +176,11 @@ def main():
     args = parser.parse_args()
     print(args)
     
-    scales = list(map(float, args.scales.split(',')))
-    prompts = args.prompts.split(';')
-    print(prompts)
+    scales = list(map(float, args.scales.split(',')))  # Use semicolon to split scales
+    print(f"Scales: {scales}")  # Add this line to print parsed scales
+    
+    prompts = args.prompts.split(',')
+    print(f"Prompts: {prompts}")  # Add this line to print parsed prompts
     
     if not torch.cuda.is_available():
         if "cuda" in args.device:
@@ -200,7 +206,6 @@ def main():
             ddim_steps=args.ddim_steps,
             guidance_scale=args.guidance_scale
         )
-
 
 if __name__ == "__main__":
     main()
