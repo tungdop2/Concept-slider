@@ -3,7 +3,7 @@ import os
 import random
 import gc
 import torch
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
@@ -50,7 +50,7 @@ def prepare_base_model(pretrained_model_name_or_path, revision, device, weight_d
 
 def load_lora_for_unet(lora_weight, unet, device, weight_dtype):
     try:
-        lora_dict = torch.load(lora_weight, map_location="cpu")
+        lora_dict = torch.load(lora_weight)
         
         lora_params = lora_dict['lora_params']
         print(f"LoRA parameters: {lora_params}")
@@ -79,11 +79,34 @@ def load_lora_for_unet(lora_weight, unet, device, weight_dtype):
         print(f"Error loading LoRA for UNet: {e}")
         raise
 
+def add_scale_text(image, scale_text, font_size=30):
+    # Load a truetype or opentype font file, and create a font object.
+    try:
+        font = ImageFont.truetype("arial.ttf", font_size)
+    except IOError:
+        font = ImageFont.load_default(font_size)  # Fallback to default font if truetype font is not available
+    
+    # Create a new image with extra space for the text
+    width, height = image.size
+    new_height = height + 50  # Adding 50 pixels for the text area
+    new_image = Image.new("RGB", (width, new_height), "white")
+    new_image.paste(image, (0, 50))
+
+    # Add text to the white area
+    draw = ImageDraw.Draw(new_image)
+    text_bbox = draw.textbbox((0, 0), scale_text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    text_position = ((width - text_width) // 2, 10)  # Centering text horizontally and vertically in the new area
+    draw.text(text_position, scale_text, fill="black", font=font)
+
+    return new_image
+
 def generate_images(prompt, scales, lora_weight, output_dir, pretrained_model_name_or_path, revision, device, weight_dtype, start_noise, num_images_per_prompt, negative_prompt, batch_size, height, width, ddim_steps, guidance_scale):
     os.makedirs(output_dir, exist_ok=True)
     noise_scheduler, tokenizer, text_encoder, vae, unet = prepare_base_model(pretrained_model_name_or_path, revision, device, weight_dtype)
 
-    for _ in range(num_images_per_prompt):
+    for idx in range(num_images_per_prompt):
         seed = random.randint(0, int(1e9))
         
         model_name = lora_weight
@@ -94,8 +117,7 @@ def generate_images(prompt, scales, lora_weight, output_dir, pretrained_model_na
 
         print(f"Prompt: {prompt}")
         print(f"Seed: {seed}")
-
-        scales = ["base"] + scales
+        
         for scale in tqdm(scales):
             generator = torch.manual_seed(seed)
             text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt")
@@ -126,7 +148,7 @@ def generate_images(prompt, scales, lora_weight, output_dir, pretrained_model_na
             latent_model_input = torch.cat([latents] * 2)
 
             for t in noise_scheduler.timesteps:
-                if t > start_noise or scale == "base":
+                if t > start_noise:
                     network.set_lora_slider(scale=0)
                 else:
                     network.set_lora_slider(scale=scale)
@@ -148,17 +170,37 @@ def generate_images(prompt, scales, lora_weight, output_dir, pretrained_model_na
             image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
             images = (image * 255).round().astype("uint8")
             pil_images = [Image.fromarray(image) for image in images]
-            pil_images[0].save(f"{output_dir}/{prompt.replace(' ', '_')}_{name.replace('.pt', '')}_{scale}.png")
-            images_list.append(pil_images[0])
+            
+            scaled_image = add_scale_text(pil_images[0], f"{scale}x")
+            # scaled_image.save(f"{output_dir}/{prompt.replace(' ', '_')}_{name.replace('.pt', '')}_{idx}_{scale}.png")
+            images_list.append(scaled_image)
+
+        # Concatenate images vertically
+        concatenated_image = concatenate_images(images_list)
+        concatenated_image.save(f"{output_dir}/{prompt.replace(' ', '_')}_{name.replace('.pt', '')}_{idx}_concatenated.png")
 
         del network
         torch.cuda.empty_cache()
 
+def concatenate_images(images_list):
+    widths, heights = zip(*(img.size for img in images_list))
+    total_width = sum(widths)
+    max_height = max(heights)
+
+    concatenated_image = Image.new('RGB', (total_width, max_height), "white")
+    
+    x_offset = 0
+    for img in images_list:
+        concatenated_image.paste(img, (x_offset, 0))
+        x_offset += img.width
+    
+    return concatenated_image
+
 def main():
     parser = argparse.ArgumentParser(description="Generate images using a pre-trained model and LoRA weights.")
     parser.add_argument('--lora_weight', type=str, required=True, help="LORA weights for image generation.")
-    parser.add_argument('--scales', type=str, required=True, help="Semicolon-separated list of scales.")  # Note the delimiter change
-    parser.add_argument('--prompts', type=str, required=True, help="Comma-separated list of prompts.")
+    parser.add_argument('--scales', type=str, default="-1,-0.5,0.5,1,1.5,2,2.5,3", help="Comma-separated list of scales.")  # Note the delimiter change
+    parser.add_argument('--prompts', type=str, required=True, help="Semicolon-separated list of prompts.")  # Note the delimiter change
     parser.add_argument('--output_dir', type=str, default='output', help="Directory to save the generated images and GIFs.")
     parser.add_argument('--pretrained_model', type=str, default="stablediffusionapi/realistic-vision-v51", help="Pre-trained model path.")
     parser.add_argument('--revision', type=str, default=None, help="Model revision.")
@@ -177,12 +219,16 @@ def main():
     print(args)
     
     scales = list(map(float, args.scales.split(',')))  # Use semicolon to split scales
+    if 0 not in scales:
+        scales.append(0)
+        scales.sort()
     print(f"Scales: {scales}")  # Add this line to print parsed scales
     
-    prompts = args.prompts.split(',')
+    prompts = args.prompts.split(';')
     print(f"Prompts: {prompts}")  # Add this line to print parsed prompts
     
     if not torch.cuda.is_available():
+        args.weight_dtype = "float32"
         if "cuda" in args.device:
             print("CUDA is not available. Switching to CPU.")
             args.device = "cpu"
@@ -206,6 +252,7 @@ def main():
             ddim_steps=args.ddim_steps,
             guidance_scale=args.guidance_scale
         )
+
 
 if __name__ == "__main__":
     main()

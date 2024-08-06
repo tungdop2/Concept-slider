@@ -1,11 +1,10 @@
 python infer.py \
     --lora_weight "models/age_slider.pt" \
-    --scales "1,2,3,4" \
-    --prompts "A selfie of a girl, upper body, smiling, beautiful" \
+    --prompts "A selfie of a 30-40 y.o woman, upper body, smiling, beautiful" \
     --output_dir "output" \
     --pretrained_model "stablediffusionapi/realistic-vision-v51" \
-    --device "cpu" \
-    --num_images_per_prompt 1 \
+    --device "cuda:0" \
+    --num_images_per_prompt 5 \
     --negative_prompt "gray, blackwhite, nude, naked, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, distorted, ugly" \
     --batch_size 1 \
     --height 512 \
