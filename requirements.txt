@@ -1,6 +1,6 @@
 torch==2.0.1
 torchvision==0.15.2
-# bitsandbytes==0.41.1
+bitsandbytes==0.41.1
 # dadaptation==3.1
 diffusers==0.20.2
 # ipython==8.7.0
@@ -19,5 +19,5 @@ Pillow==10.1.0
 safetensors==0.3.1
 tqdm==4.64.1
 transformers==4.27.4
-# xformers==0.0.21
-# accelerate==0.16.0
+xformers==0.0.21
+accelerate==0.16.0
