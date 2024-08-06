@@ -1,6 +1,7 @@
 python infer.py \
     --lora_weight "models/age_slider.pt" \
-    --prompts "A selfie of a 30-40 y.o woman, upper body, smiling, beautiful" \
+    --prompts "A selfie of a 30 y.o woman, upper body, smiling, beautiful" \
+    --scales "-2, -1, 1, 1.5, 2, 2.5, 3" \
     --output_dir "output" \
     --pretrained_model "stablediffusionapi/realistic-vision-v51" \
     --device "cuda:0" \

@@ -62,11 +62,12 @@ Here is an example command to generate images:
 ```sh
 python infer.py \
     --lora_weight "models/age_slider.pt" \
-    --prompts "A selfie of a 30-40 y.o woman, upper body, smiling, beautiful" \
+    --prompts "A selfie of a 30 y.o woman, upper body, smiling, beautiful" \
+    --scales "-2, -1, 1, 1.5, 2, 2.5, 3" \
     --output_dir "output" \
     --pretrained_model "stablediffusionapi/realistic-vision-v51" \
     --device "cuda:0" \
-    --num_images_per_prompt 1 \
+    --num_images_per_prompt 5 \
     --negative_prompt "gray, blackwhite, nude, naked, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, distorted, ugly" \
     --batch_size 1 \
     --height 512 \
@@ -74,4 +75,4 @@ python infer.py \
     --ddim_steps 50 \
     --guidance_scale 7.5
 ```
-![Example](./output/A_selfie_of_a_30-40_y.o_woman,_upper_body,_smiling,_beautiful_age_slider_2_concatenated.png)
+![Example](./output/test.png)
