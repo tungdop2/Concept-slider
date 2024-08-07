@@ -36,7 +36,7 @@ Run the script with the desired parameters to generate multiple images with diff
 ## Arguments
 
 - `--lora_weight`: Path to the LoRA weights for image generation (required).
-- `--scales`: Comma-separated list of scales (default: "-3,-2,-1,1,2,3").
+- `--scales`: Comma-separated list of scales (default: "-1, 1, 2, 3"), e.g positive for older, negative for younger.
 - `--prompts`: Semicolon-separated list of prompts (required).
 - `--output_dir`: Directory to save the generated images (default: 'output').
 - `--pretrained_model`: Path to the pre-trained model (default: "stablediffusionapi/realistic-vision-v51").
